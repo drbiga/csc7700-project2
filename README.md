@@ -26,18 +26,18 @@ Where $q$ is the query, $d$ is a document, $tfidf(q)$ is the TF-IDF score for qu
 
 ## Experiments
 
-In order to test various different scenarios, for various pairs of weights $(\alpha, \beta)$, the result sets are going to be compared. Result set difference will be determined, as shown in the equation below, by calculating the absolute value of the difference between the scores of documents in different sets. In case a document exists in one result set and does not exist in another result set, the score for the document in the result set where it does not exist will be zero.
+In order to test various different scenarios, the result sets are going to be compared for various pairs of weights $(\alpha, \beta)$. Result set difference will be determined, as shown in the equation below, by calculating the absolute value of the difference between the scores of documents in different sets. In case a document exists in one result set and does not exist in another result set, the score for the document in the result set where it does not exist will be zero.
 
 $$
   \begin{equation*}
   \begin{aligned}
-    diff(R_1, R_2) &=
+    &diff(R_1, R_2) =
   \begin{cases}
      \frac{1}{Z}\sum\limits_{d \in R_1 \cup R_2}{|s(q, d_1) - s(q, d_2)|}, if ~d \in R_1 ~and ~d \in R_2 \\
      \frac{1}{Z}\sum\limits_{d \in R_1 \cup R_2}{|0 - s(q, d_2)|}, if ~d \notin R_1 ~and ~d \in R_2 \\
      \frac{1}{Z}\sum\limits_{d \in R_1 \cup R_2}{|s(q, d_1) - 0|}, if ~d \in R_1 ~and ~d \notin R_2 \\
   \end{cases} \\
-    Z &= \sum\limits_{d \in R_1}{s(q, d_1)} + \sum\limits_{d \in R_2}{s(q, d_2)}
+    &Z = \sum\limits_{d \in R_1}{s(q, d_1)} + \sum\limits_{d \in R_2}{s(q, d_2)}
   \end{aligned}
   \end{equation*}
 $$
