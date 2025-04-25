@@ -22,11 +22,11 @@ $$
     s_d(q, d) = \alpha \cdot tfidf(q) + \beta \cdot pr(d)
 $$
 
+Where $q$ is the query, $d$ is a document, $tfidf(q)$ is the TF-IDF score for query $q$ in the entire database, and $pr(d)$ is the page rank for document $d$ in the database.
+
 ## Experiments
 
 In order to test various different scenarios, a range of weights for both scores (TF-IDF and page rank) will be tested.
-
-Where $q$ is the query, $d$ is a document, $tfidf(q)$ is the TF-IDF score for query $q$ in the entire database, and $pr(d)$ is the page rank for document $d$ in the database.
 
 Furthermore, for various pairs of weights $(\alpha, \beta)$, the result sets are going to be compared. Result set difference will be determined, as shown in the equation below, by calculating the absolute value of the difference between the scores of documents in different sets. In case a document exists in one result set and does not exist in another result set, the score for the document in the result set where it does not exist will be zero.
 
