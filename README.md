@@ -16,15 +16,15 @@ operations on their data, it is only natural to try and use the same algorithm t
 
 Also, TF-IDF will be used to search for relationships between the input queries and the paper titles in order to capture meaning.
 
-The final score for the documents given the query will be calculated using a linear combination between paper's page rank and the semantic similarity between query and paper title.
-
-## Experiments
-
-In order to test various different scenarios, a range of weights for both scores (TF-IDF and page rank) will be tested. The equation below will be used to compute final scores for each document.
+The final score for the documents given the query will be calculated using a linear combination between paper's page rank and the semantic similarity between query and paper title as shown in the equation below.
 
 $$
     s_d(q, d) = \alpha \cdot tfidf(q) + \beta \cdot pr(d)
 $$
+
+## Experiments
+
+In order to test various different scenarios, a range of weights for both scores (TF-IDF and page rank) will be tested.
 
 Where $q$ is the query, $d$ is a document, $tfidf(q)$ is the TF-IDF score for query $q$ in the entire database, and $pr(d)$ is the page rank for document $d$ in the database.
 
