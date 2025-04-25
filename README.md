@@ -26,7 +26,7 @@ Where $q$ is the query, $d$ is a document, $tfidf(q)$ is the TF-IDF score for qu
 
 ## Experiments
 
-In order to test various different scenarios, the result sets are going to be compared for various pairs of weights $(\alpha, \beta)$. Result set difference will be determined, as shown in the equation below, by calculating the absolute value of the difference between the scores of documents in different sets. In case a document exists in one result set and does not exist in another result set, the score for the document in the result set where it does not exist will be zero.
+In order to test various different scenarios, the result sets are going to be compared for various pairs of weights $(\alpha, \beta).$ Result set difference will be determined, as shown in the equation below, by calculating the absolute value of the difference between the scores of documents in different sets. In case a document exists in one result set and does not exist in another result set, the score for the document in the result set where it does not exist will be zero.
 
 $$
   \begin{equation*}
