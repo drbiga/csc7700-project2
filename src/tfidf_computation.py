@@ -12,10 +12,9 @@ from pyspark.sql.types import DoubleType
 
 def get_spark() -> SparkSession:
     return (
-        SparkSession.builder.appName("myApp").config(
-            "spark.sql.caseSensitive", "true"
-        )  # .config("spark.mongodb.read.connection.uri", "mongodb://127.0.0.1/test.coll")
-        # .config("spark.mongodb.write.connection.uri", "mongodb://127.0.0.1/test.coll")
+        SparkSession.builder.appName("myApp")
+        .config("spark.driver.memory", "4g")
+        .config("spark.sql.caseSensitive", "true")
         .getOrCreate()
     )
 

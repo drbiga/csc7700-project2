@@ -1,6 +1,8 @@
+.venv/
 data/*
 !data/sample.json
 
 spark/*
 
 __pycache__/
+spark-*/
