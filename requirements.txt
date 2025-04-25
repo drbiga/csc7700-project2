@@ -1,0 +1,4 @@
+pandas==2.2.2
+pyspark==3.5.5
+numpy==1.26.4
+setuptools==68.2.2

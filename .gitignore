@@ -4,3 +4,5 @@ data/*
 spark/*
 
 __pycache__/
+
+venv/
