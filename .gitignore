@@ -6,3 +6,5 @@ spark/*
 
 __pycache__/
 spark-*/
+
+venv/
