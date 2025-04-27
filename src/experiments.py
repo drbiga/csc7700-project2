@@ -1,3 +1,50 @@
+from pyspark.sql import SparkSession, functions as F
+
+from util import parse_text_for_matching
+
+
+def generate_query_database(input_path: str, output_path: str) -> None:
+    """Generates the query database that will be used in the experiments using the input file.
+    The generated file will be stored in `output_path`
+
+    Parameters
+    ----------
+        input_path: str - A JSON file containing the page rank results and the titles for every paper.
+        output_path: str - An output path that will contain a JSON file with a list of query and id pairs
+    """
+    spark = (
+        SparkSession.builder.appName("Query Database")
+        .config("spark.driver.memory", "4g")
+        .config("spark.executor.memory", "4g")
+        .getOrCreate()
+    )
+    N = 5  # number of words you want to sample
+
+    df = spark.read.parquet(input_path)
+    df = parse_text_for_matching(df, "title", "parsed_title", keep_array=True)
+    df = df.withColumn("words_array", F.col("parsed_title"))
+    df = df.withColumn("word_count", F.size(F.col("words_array"))).where(
+        F.col("word_count") >= N
+    )
+    count = df.count()
+    sample_size = int(0.1 * count)
+    df_sample = df.orderBy(F.desc("rank")).limit(sample_size)
+    # Shuffle the array randomly (keep their shuffled order, no sort)
+    df_sample = df_sample.withColumn("shuffled_words", F.shuffle(F.col("words_array")))
+    # Take first N words
+    df_sample = df_sample.withColumn(
+        "sampled_words", F.slice(F.col("shuffled_words"), 1, N)
+    )
+    # Join them back into a string
+    df_sample = df_sample.withColumn(
+        "sampled_text", F.array_join(F.col("sampled_words"), " ")
+    ).cache()
+    df_sample.select("id", "sampled_text").withColumnRenamed(
+        "sampled_text", "query"
+    ).show(truncate=False)
+    df_sample.write.mode("overwrite").parquet(output_path)
+
+
 def alpha() -> None:
     """Performs the evaluation of various different scenarios for alpha, which
     is the weight given to TFIDF relative to the final score. Alpha values are

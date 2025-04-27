@@ -86,19 +86,6 @@ def compute_pagerank2(input_path: str, output_path: str, tolerance: float = 1e-4
         # Distribute dead_end_rank evenly across all nodes
         dead_end_contrib = dead_end_rank / num_nodes
 
-        # Update ranks
-        # ranks = (
-        #     nodes.join(contribs_per_node, nodes.id == contribs_per_node.dst, "left")
-        #     .select(
-        #         nodes.id,
-        #         (
-        #             (lit(1.0) - damping_factor) / num_nodes
-        #             + damping_factor
-        #             * (col("sum_contribution").cast("double") + dead_end_contrib)
-        #         ).alias("rank"),
-        #     )
-        #     .fillna({"rank": 0})
-        # )
         ranks = (
             nodes.join(contribs_per_node, nodes.id == contribs_per_node.dst, "left")
             .withColumn(
@@ -135,6 +122,9 @@ def compute_pagerank2(input_path: str, output_path: str, tolerance: float = 1e-4
     spark.stop()
 
 
+# Do NOT use
+# This does not work
+# Use V2 above
 def compute_pageranks(
     input_json_path: str,
     output_parquet_path: str,
@@ -193,7 +183,7 @@ def compute_pageranks(
         .withColumn("rank", lit(1.0))
     )
 
-    print(ranks_df.show(5))
+    ranks_df.show(5)
 
     # Get the list of all node IDs
     all_nodes = ranks_df.select("id").cache()
@@ -251,80 +241,9 @@ def compute_pageranks(
             "rank", col("rank") + lit((1 - sum_current_ranks) / num_nodes)
         )
 
-        # Join links with current ranks
-        # joined_df = ranks_df.select(
-        #     col("id").alias("src_id"),
-        #     col("rank").alias("src_rank"),
-        #     col("out_degree").alias("src_out_degree"),
-        #     col("in_degree").alias("src_in_degree"),
-        # ).join(edges_df, col("src_id") == edges_df.src, how="inner")
-        # joined_df = (
-        #     joined_df.join(
-        #         ranks_df.select(
-        #             col("id").alias("dst_id"),
-        #             col("rank").alias("dst_rank"),
-        #             col("out_degree").alias("dst_out_degree"),
-        #             col("in_degree").alias("dst_in_degree"),
-        #         ),
-        #         joined_df.dst == col("dst_id"),
-        #         how="inner",
-        #     )
-        #     .select(
-        #         col("dst_id"),
-        #         col("dst_rank"),
-        #         col("dst_in_degree"),
-        #         col("dst_out_degree"),
-        #         col("src_rank"),
-        #         # col("src_in_degree"),
-        #         col("src_out_degree"),
-        #     )
-        #     .fillna(
-        #         {
-        #             "dst_in_degree": 0,
-        #             "dst_out_degree": 0,
-        #             # "src_in_degree": 0,
-        #             "src_out_degree": 0,
-        #         }
-        #     )
-        # )
-        # ranks_deadends_df = joined_df.where(col("src_out_degree") == 0)
-
-        # deadends_total = (
-        #     ranks_deadends_df.select(F.sum("src_rank").alias("deadends_total"))
-        #     .collect()[0]
-        #     .deadends_total
-        # )
-        # deadends_total = deadends_total if deadends_total is not None else 0
-        # ranks_df = joined_df.groupBy("dst_id").agg(
-        #     # Getting all the values for the dst node's in and out degree instead of having to join later
-        #     (F.max("dst_in_degree").alias("dst_in_degree")),
-        #     (F.max("dst_out_degree").alias("dst_out_degree")),
-        #     # Computing the updated rank for the destination node
-        #     (damping_factor * (F.sum(col("src_rank") / col("src_out_degree")))).alias(
-        #         "dst_rank"
-        #     ),
-        # )
-        # ranks_df = ranks_df.withColumn(
-        #     "dst_rank", F.when(col("dst_in_degree") == 0, 0).otherwise(col("dst_rank"))
-        # )
-        # sum_current_ranks = (
-        #     ranks_df.select(F.sum("dst_rank").alias("total_rank"))
-        #     .collect()[0]
-        #     .total_rank
-        # )
-        # ranks_df = ranks_df.withColumn(
-        #     "dst_rank",
-        #     lit((1 - sum_current_ranks) / num_nodes) + col("dst_rank"),
-        # )
-        # ranks_df = ranks_df.select(
-        #     col("dst_id").alias("id"),
-        #     col("dst_rank").alias("rank"),
-        #     col("dst_in_degree").alias("in_degree"),
-        #     col("dst_out_degree").alias("out_degree"),
-        # )
         previous_ranks = spark.read.parquet(tmpdir)
-        print(ranks_df.show(5))
-        print(previous_ranks.show(5))
+        ranks_df.show(5)
+        previous_ranks.show(5)
         sum_previous_ranks = (
             previous_ranks.select(F.sum("rank").alias("total_rank"))
             .collect()[0]
@@ -375,7 +294,7 @@ def sum_all_pageranks(pagerank_parquet_path: str) -> float:
         .getOrCreate()
     )
     df = spark.read.parquet(pagerank_parquet_path)
-    print(df.show(5))
+    df.show(5)
     result = df.select(F.sum(col("rank"))).collect()
 
     result = result if result is not None else 0
