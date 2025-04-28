@@ -125,7 +125,7 @@ def compute_score(
         top_n: Number of top results to return.
     """
     # 1) Transform the query into TF-IDF using the saved pipeline
-    #spark = get_spark()
+    # spark = get_spark()
 
     # Build TF-IDF features for the query
     model = PipelineModel.load(pipeline_model_path)
@@ -146,7 +146,9 @@ def compute_score(
     tfidf_scored = tfidf_df.withColumn("tfidf_score", cosine_udf(col("tfidfFeatures")))
 
     # Load PageRank scores
-    pr_df = spark.read.parquet(pagerank_df_path).select(col(id_field), col("rank").alias("pr_score"))
+    pr_df = spark.read.parquet(pagerank_df_path).select(
+        col(id_field), col("rank").alias("pr_score")
+    )
 
     # Join and combine
     combined = (

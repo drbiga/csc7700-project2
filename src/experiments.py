@@ -191,10 +191,19 @@ def query_performance(
             break
         print("Running query", counter)
         ts_start = datetime.now()
+
+        conditions = [F.col("title").contains(word) for word in query["query"].split()]
+        # Combine them
+        combined_condition = conditions[0]
+        for cond in conditions[1:]:
+            combined_condition = combined_condition | cond
+
+        # Filter
+        df_tfidf_vectors_filtered = df_tfidf_vectors.filter(combined_condition)
         score_matheus(
             spark,
             query["query"],
-            df_tfidf_vectors,
+            df_tfidf_vectors_filtered,
             model,
             df_pageranks,
             alpha=0.5,  # the values for alpha and beta do not matter too much here,

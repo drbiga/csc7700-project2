@@ -113,6 +113,9 @@ def main():
     #         spark, ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
     #     )
     # alpha(spark, query_db_path=QUERY_DATABASE_PATH)
+
+    # spark.read.parquet(ENTIRE_DATABASE_TFIDF_VECTORS_OUTPUT_PATH).show(5)
+    # spark.read.parquet(ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH).show(5)
     query_performance(
         spark,
         QUERY_DATABASE_PATH,
