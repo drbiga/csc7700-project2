@@ -2,6 +2,17 @@
 
 This project aims to create a web-scale search engine for papers using PageRank and TFIDF for information retrieval.
 
+## Running This
+
+1) Run this in a Linux VM/WSL (failure to do so may require installation of Hadoop)
+2) Install python/python3
+3) Run `cd csc7700-project2`
+4) Run `python -m venv .venv`
+5) Run `source ./venv/bin/activate`
+6) Run `pip install -r requirements.txt`
+7) Run `python src/main.py` or `python3 src/main.py`
+8) Observe the output and/or output files.
+
 ## Dataset
 
 The dataset that will be used was found in [Kaggle](https://www.kaggle.com/datasets/mathurinache/citation-network-dataset?resource=download).
