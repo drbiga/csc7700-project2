@@ -100,6 +100,7 @@ def get_tfidf(
 
 
 def compute_score(
+    spark: SparkSession,
     query: str,
     tfidf_df_path: str = "spark/tfidf",
     pipeline_model_path: str = "spark/pipeline_model",
@@ -124,7 +125,7 @@ def compute_score(
         top_n: Number of top results to return.
     """
     # 1) Transform the query into TF-IDF using the saved pipeline
-    spark = get_spark()
+    #spark = get_spark()
 
     # Build TF-IDF features for the query
     model = PipelineModel.load(pipeline_model_path)

@@ -7,7 +7,9 @@ import itertools
 import pandas as pd
 import matplotlib.pyplot as plt
 from evaluation import difference_between_result_sets
-
+from pyspark.ml import Pipeline, PipelineModel
+from pyspark.sql.functions import udf, col
+from pyspark.sql.types import DoubleType
 
 def generate_query_database(spark: SparkSession, input_path: str, output_path: str) -> None:
     """Generates the query database that will be used in the experiments using the input file.
@@ -49,9 +51,16 @@ def generate_query_database(spark: SparkSession, input_path: str, output_path: s
 
 def alpha(
     spark: SparkSession,
+    query_db_path: str,
+    tfidf_path: str = "spark/tfidf",
+    pagerank_path: str = "entire-database-spark-pageranks",
+    pipeline_model_path: str = "spark/pipeline_model",
     result_size: int = 100,
-    alpha_values: list = [i / 10.0 for i in range(11)],
-    output_csv: str = "entire-database-spark-expirements/alpha_results.csv",
+    alpha_values: list = [i/10.0 for i in range(11)],
+    sample_frac: float = 0.1,
+    sample_limit: int = 100,
+    output_csv: str = "entire-database-spark-experiments/alpha_results.csv",
+    output_dir: str = "entire-database-spark-experiments/alpha_plots",
 ) -> None:
     """Performs the evaluation of various different scenarios for alpha, which
     is the weight given to TFIDF relative to the final score. Alpha values are
@@ -74,46 +83,70 @@ def alpha(
     3.3 Store the difference indexed by query and pairs of alphas
     4. Plot (scatter, line, whatever) the alphas vs the differences for each query - maybe one plot for each query or even one plot with several hues
     """
-    queries_df = (
-        spark
-        .read.parquet("query_database.parquet")
-        .select("id", "query")
-        .sample(False, 0.1, seed=42)
-        .limit(100)
+    
+    # 2) Build UDF for combined scoring
+    
+
+    # 3) Load and sample queries
+    queries = (
+        spark.read.parquet(query_db_path)
+             .select("id", "query")
+             .sample(False, sample_frac, seed=42)
+             .limit(sample_limit)
+             .collect()
     )
-    queries = [(r["id"], r["query"]) for r in queries_df.collect()]
+    queries = [(r["id"], r["query"]) for r in queries]
+
+    # 8) Compute pairwise differences per query
     rows = []
-    for qid, query in queries:
+
+    # 2) for each query, drive all α locally
+    for qid, text in queries:
+        # compute top-N at each α
         score_dicts = {}
         for a in alpha_values:
-            df_scores = compute_score(query, top_n=result_size, alpha=a, beta=1 - a)
+            df_scores = compute_score(
+                spark,
+                query=text,
+                top_n=result_size,
+                alpha=a,
+                beta=1.0 - a
+            )
+            # build {id → score} lookup
             score_dicts[a] = dict(zip(df_scores["id"], df_scores["score"]))
 
-        # 3) Pairwise differences
+        # pairwise differences
         for a1, a2 in itertools.combinations(alpha_values, 2):
             diff = difference_between_result_sets(
-                score_dicts[a1], score_dicts[a2], a1, a2
+                score_dicts[a1],
+                score_dicts[a2],
+                a1, a2
             )
             rows.append({
                 "query_id": qid,
                 "alpha1": a1,
                 "alpha2": a2,
-                "difference": diff,
+                "difference": diff
             })
 
-    # 4) Save as CSV
+    # 9) Save results and generate plots
     out_df = pd.DataFrame(rows)
     out_df.to_csv(output_csv, index=False)
 
-    # 5) Plot scatter of (alpha1, alpha2) sized by difference, per query
+    # 4) per-query scatter
     for qid in out_df["query_id"].unique():
         sub = out_df[out_df["query_id"] == qid]
         plt.figure()
-        plt.scatter(sub["alpha1"], sub["alpha2"], s=sub["difference"] * 100)
-        plt.title(f"Alpha sweep differences for query {qid}")
-        plt.xlabel("alpha1")
-        plt.ylabel("alpha2")
-        plt.savefig(f"alpha_sweep_{qid}.png")
+        plt.scatter(
+            sub["alpha1"], sub["alpha2"],
+            s=sub["difference"] * 100  # scale for visibility
+        )
+        plt.title(f"Alpha sweep diffs for query {qid}")
+        plt.xlabel("α₁")
+        plt.ylabel("α₂")
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f"alpha_sweep_{qid}.png"))
+        plt.close()
 
 def query_performance() -> None:
     """Performs the evaluation of query performance time.

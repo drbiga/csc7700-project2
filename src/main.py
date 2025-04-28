@@ -98,7 +98,7 @@ def main():
         generate_query_database(
             spark, ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
         )
-    alpha(spark)
+    alpha(spark, query_db_path=QUERY_DATABASE_PATH)
 
     spark.stop()
 
