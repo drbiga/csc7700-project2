@@ -12,3 +12,5 @@ entire-database-spark-pageranks/
 entire-database-spark-tfidf/
 sample-spark-pageranks/
 sample-spark-tfidf/
+query-database-parquet/
+entire-database-spark-expirements/

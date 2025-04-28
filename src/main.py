@@ -66,20 +66,21 @@ def test_with_sample(spark):
 
 
 def run_for_entire_database(spark: SparkSession):
-    parse_db(ORIGINAL_DB_PATH, PARSED_DB_PATH)
+    if not os.path.exists(ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH):
+        parse_db(ORIGINAL_DB_PATH, PARSED_DB_PATH)
 
-    if not os.path.exists(ENTIRE_DATABASE_TFIDF_DIR):
-        os.mkdir(ENTIRE_DATABASE_TFIDF_DIR)
-    run_tfidf(
-        spark,
-        PARSED_DB_PATH,
-        output_tfidf_path=ENTIRE_DATABASE_TFIDF_VECTORS_OUTPUT_PATH,
-        pipeline_model_path=ENTIRE_DATABASE_TFIDF_PIPELINE_OUTPUT_PATH,
-    )
-    compute_pagerank2(spark, PARSED_DB_PATH, ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH)
-    nodes = get_top_n_ranked_nodes(ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH, 10)
-    print(nodes)
-    print(sum_all_pageranks(ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH))
+        if not os.path.exists(ENTIRE_DATABASE_TFIDF_DIR):
+            os.mkdir(ENTIRE_DATABASE_TFIDF_DIR)
+        run_tfidf(
+            spark,
+            PARSED_DB_PATH,
+            output_tfidf_path=ENTIRE_DATABASE_TFIDF_VECTORS_OUTPUT_PATH,
+            pipeline_model_path=ENTIRE_DATABASE_TFIDF_PIPELINE_OUTPUT_PATH,
+        )
+        compute_pagerank2(spark, PARSED_DB_PATH, ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH)
+        nodes = get_top_n_ranked_nodes(ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH, 10)
+        print(nodes)
+        print(sum_all_pageranks(ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH))
 
 
 def main():
@@ -87,14 +88,14 @@ def main():
     test_with_sample(spark)
     printSampleComplete()
     run_for_entire_database(spark)
-    # add_title_to_pagerank(
-    #     ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH,
-    #     PARSED_DB_PATH,
-    #     ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH,
-    # )
-    # generate_query_database(
-    #     ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
-    # )
+    add_title_to_pagerank(
+        ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH,
+        PARSED_DB_PATH,
+        ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH,
+    )
+    generate_query_database(
+        ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
+    )
     spark.stop()
 
 
