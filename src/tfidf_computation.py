@@ -13,14 +13,16 @@ from pyspark.sql.types import DoubleType
 
 def get_spark() -> SparkSession:
     return (
-        SparkSession.builder.appName("myApp")
-        .config("spark.driver.memory", "4g")
-        .config("spark.sql.caseSensitive", "true")
+        SparkSession.builder.appName("ComputePageRanks")
+        .config("spark.driver.memory", "8g")
+        .config("spark.executor.memory", "8g")
+        .config("spark.sql.autoBroadcastJoinThreshold", -1)
         .getOrCreate()
     )
 
 
 def run_tfidf(
+    spark: SparkSession,
     json_path: str,
     id_field: str = "id",
     text_field: str = "title",
@@ -42,7 +44,7 @@ def run_tfidf(
         num_features: Number of features for HashingTF.
     """
     # Read from JSON, enabling multiline for arrays
-    df = get_spark().read.option("multiline", True).json(json_path)
+    df = spark.read.option("multiline", True).json(json_path)
 
     # Select only id and text columns, drop nulls
     data = df.select(col(id_field).cast("string"), col(text_field)).na.drop()

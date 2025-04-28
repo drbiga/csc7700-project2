@@ -6,18 +6,10 @@ from pyspark.sql.functions import explode, col, lit, collect_list, desc, size
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType
 from typing import Optional
+from ascii import printConverged
 
 
-def compute_pagerank2(input_path: str, output_path: str, tolerance: float = 1e-4):
-    # Initialize Spark
-    spark = (
-        SparkSession.builder.appName("PageRank Improved")
-        .config("spark.driver.memory", "4g")
-        .config("spark.executor.memory", "4g")
-        .getOrCreate()
-    )
-
-    # Load JSON data
+def compute_pagerank2(spark: SparkSession, input_path: str, output_path: str, tolerance: float = 1e-4):    # Load JSON data
     df = spark.read.option("multiLine", True).json(input_path)
 
     # Create edges DataFrame (src, dst)
@@ -113,19 +105,20 @@ def compute_pagerank2(input_path: str, output_path: str, tolerance: float = 1e-4
         ranks.write.mode("overwrite").parquet(tmpdir)
         if err < tolerance:
             print("\tALGORITHM CONVERGED IN", i + 1, "ITERATIONS")
+            printConverged()
             break
 
     ranks = spark.read.parquet(tmpdir)
     total_rank = ranks.agg(F.sum("rank").alias("total")).collect()[0]["total"]
     ranks = ranks.withColumn("rank", col("rank") / total_rank)
     ranks.write.mode("overwrite").parquet(output_path)
-    spark.stop()
 
 
 # Do NOT use
 # This does not work
 # Use V2 above
 def compute_pageranks(
+    spark: SparkSession,
     input_json_path: str,
     output_parquet_path: str,
     iterations: int = 10,
@@ -141,15 +134,6 @@ def compute_pageranks(
     - iterations (int): Number of iterations for the PageRank algorithm. Default is 10.
     - damping_factor (float): Damping factor for the PageRank algorithm. Default is 0.85.
     """
-    # Initialize Spark session
-    spark = (
-        SparkSession.builder.appName("ComputePageRanks")
-        .config("spark.driver.memory", "8g")
-        .config("spark.executor.memory", "8g")
-        .config("spark.sql.autoBroadcastJoinThreshold", -1)
-        .getOrCreate()
-    )
-
     # Define the schema for the input JSON
     schema = StructType(
         [
@@ -255,14 +239,13 @@ def compute_pageranks(
 
     if err < tolerance:
         print("PageRank algorithm CONVERGED")
+        printConverged()
     else:
         print(f"PageRank algorithm finished running and DID NOT CONVERGE")
 
     ranks_df = spark.read.parquet(tmpdir)
     ranks_df.write.mode("overwrite").parquet(output_parquet_path)
     shutil.rmtree(tmpdir)
-    # Stop the Spark session
-    spark.stop()
 
 
 def get_top_n_ranked_nodes(pagerank_parquet_path, n):
@@ -283,7 +266,6 @@ def get_top_n_ranked_nodes(pagerank_parquet_path, n):
         .collect()
     )
 
-    spark.stop()
     return top_n
 
 
