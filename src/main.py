@@ -14,7 +14,7 @@ from scoring import score
 
 from dataset import create_sample_parquet, create_sample_json, parse_db
 
-from experiments import generate_query_database
+from experiments import generate_query_database, alpha
 
 from ascii import printSampleComplete
 
@@ -93,9 +93,13 @@ def main():
         PARSED_DB_PATH,
         ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH,
     )
-    generate_query_database(
-        ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
-    )
+    # Experiments
+    if not os.path.exists(QUERY_DATABASE_PATH):
+        generate_query_database(
+            spark, ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
+        )
+    alpha(spark)
+
     spark.stop()
 
 

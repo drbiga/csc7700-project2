@@ -103,9 +103,12 @@ def compute_score(
     query: str,
     tfidf_df_path: str = "spark/tfidf",
     pipeline_model_path: str = "spark/pipeline_model",
+    pagerank_df_path: str = "entire-database-spark-pageranks",
     id_field: str = "id",
     text_field: str = "title",
     top_n: int = 10,
+    alpha: float = 1.0,
+    beta: float = 0.0,
 ) -> pd.DataFrame:
     """
     Computes cosine similarity scores between `query` and all documents in the TF-IDF store.
@@ -121,8 +124,11 @@ def compute_score(
         top_n: Number of top results to return.
     """
     # 1) Transform the query into TF-IDF using the saved pipeline
+    spark = get_spark()
+
+    # Build TF-IDF features for the query
     model = PipelineModel.load(pipeline_model_path)
-    query_df = get_spark().createDataFrame([(query,)], [text_field])
+    query_df = spark.createDataFrame([(query,)], [text_field])
     q_vec = model.transform(query_df).select("tfidfFeatures").first()["tfidfFeatures"]
 
     # 2) Define a UDF for cosine similarity against the query vector
@@ -134,14 +140,26 @@ def compute_score(
 
     cosine_udf = udf(cosine_sim, DoubleType())
 
-    # 3) Load precomputed TF-IDF and compute scores
-    tfidf_df = get_spark().read.parquet(tfidf_df_path)
-    scored = tfidf_df.withColumn("score", cosine_udf(col("tfidfFeatures")))
+    # Apply TF-IDF scoring
+    tfidf_df = spark.read.parquet(tfidf_df_path)
+    tfidf_scored = tfidf_df.withColumn("tfidf_score", cosine_udf(col("tfidfFeatures")))
 
-    # 4) Return top N by score
-    return (
-        scored.select(col(id_field), col(text_field), col("score"))
+    # Load PageRank scores
+    pr_df = spark.read.parquet(pagerank_df_path).select(col(id_field), col("rank").alias("pr_score"))
+
+    # Join and combine
+    combined = (
+        tfidf_scored.join(pr_df, on=id_field, how="left")
+        .na.fill({"pr_score": 0.0})
+        .withColumn("score", alpha * col("tfidf_score") + beta * col("pr_score"))
+    )
+
+    # Select and order
+    out = (
+        combined.select(col(id_field), col(text_field), col("score"))
         .orderBy(col("score").desc())
         .limit(top_n)
         .toPandas()
     )
+
+    return out
