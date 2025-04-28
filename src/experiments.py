@@ -74,7 +74,13 @@ def alpha(
     3.3 Store the difference indexed by query and pairs of alphas
     4. Plot (scatter, line, whatever) the alphas vs the differences for each query - maybe one plot for each query or even one plot with several hues
     """
-    queries_df = spark.read.parquet("query_database.parquet").select("id", "query")
+    queries_df = (
+        spark
+        .read.parquet("query_database.parquet")
+        .select("id", "query")
+        .sample(False, 0.1, seed=42)
+        .limit(100)
+    )
     queries = [(r["id"], r["query"]) for r in queries_df.collect()]
     rows = []
     for qid, query in queries:
