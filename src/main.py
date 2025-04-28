@@ -1,5 +1,7 @@
 import os
 
+import warnings
+
 from util import add_title_to_pagerank
 
 from tfidf_computation import run_tfidf, compute_score, get_spark
@@ -10,11 +12,10 @@ from pagerank import (
     sum_all_pageranks,
     compute_pagerank2,
 )
-from scoring import score
 
 from dataset import create_sample_parquet, create_sample_json, parse_db
 
-from experiments import generate_query_database, alpha
+from experiments import generate_query_database, alpha, query_performance
 
 from ascii import printSampleComplete
 
@@ -41,6 +42,18 @@ ENTIRE_DATABASE_EXPERIMENTS_DIR = "entire-database-spark-experiments"
 ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH = (
     f"{ENTIRE_DATABASE_EXPERIMENTS_DIR}/pageranks_with_titles.parquet"
 )
+ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_DIR = (
+    f"{ENTIRE_DATABASE_EXPERIMENTS_DIR}/query_performance"
+)
+ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_TIMES = (
+    f"{ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_DIR}/times.csv"
+)
+ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_STATS = (
+    f"{ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_DIR}/stats.csv"
+)
+ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_PLOT = (
+    f"{ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_DIR}/histogram.png"
+)
 
 QUERY_DATABASE_PATH = "query_database.parquet"
 
@@ -59,7 +72,7 @@ def test_with_sample(spark):
         run_tfidf(spark, dataset_path, output_tfidf_path=tfidf_output)
     if not os.path.exists(pagerank_output):
         compute_pageranks(spark, dataset_path, pagerank_output, iterations=100)
-        #compute_pagerank2(spark, dataset_path)
+        # compute_pagerank2(spark, dataset_path)
     nodes = get_top_n_ranked_nodes(pagerank_output, 10)
     print(nodes)
     print(sum_all_pageranks(pagerank_output))
@@ -84,21 +97,32 @@ def run_for_entire_database(spark: SparkSession):
 
 
 def main():
+    warnings.simplefilter("ignore")
     spark = get_spark()
-    test_with_sample(spark)
-    printSampleComplete()
-    run_for_entire_database(spark)
-    add_title_to_pagerank(
+    # test_with_sample(spark)
+    # printSampleComplete()
+    # run_for_entire_database(spark)
+    # add_title_to_pagerank(
+    #     ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH,
+    #     PARSED_DB_PATH,
+    #     ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH,
+    # )
+    # # Experiments
+    # if not os.path.exists(QUERY_DATABASE_PATH):
+    #     generate_query_database(
+    #         spark, ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
+    #     )
+    # alpha(spark, query_db_path=QUERY_DATABASE_PATH)
+    query_performance(
+        spark,
+        QUERY_DATABASE_PATH,
+        ENTIRE_DATABASE_TFIDF_VECTORS_OUTPUT_PATH,
+        ENTIRE_DATABASE_TFIDF_PIPELINE_OUTPUT_PATH,
         ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH,
-        PARSED_DB_PATH,
-        ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH,
+        ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_TIMES,
+        ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_STATS,
+        ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_PLOT,
     )
-    # Experiments
-    if not os.path.exists(QUERY_DATABASE_PATH):
-        generate_query_database(
-            spark, ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
-        )
-    alpha(spark, query_db_path=QUERY_DATABASE_PATH)
 
     spark.stop()
 
