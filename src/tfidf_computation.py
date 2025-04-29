@@ -16,6 +16,7 @@ def get_spark() -> SparkSession:
         SparkSession.builder.appName("ComputePageRanks")
         .config("spark.driver.memory", "8g")
         .config("spark.executor.memory", "8g")
+        .config("spark.network.timeout", "1200s")
         .config("spark.sql.autoBroadcastJoinThreshold", -1)
         .getOrCreate()
     )

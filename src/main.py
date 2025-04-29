@@ -18,6 +18,7 @@ from dataset import create_sample_parquet, create_sample_json, parse_db
 from experiments import generate_query_database, alpha, query_performance
 
 from ascii import printSampleComplete
+from visualization import plot_3d, draw_heatmap
 
 from pyspark.sql import SparkSession
 
@@ -71,8 +72,8 @@ def test_with_sample(spark):
     if not os.path.exists(tfidf_output):
         run_tfidf(spark, dataset_path, output_tfidf_path=tfidf_output)
     if not os.path.exists(pagerank_output):
-        compute_pageranks(spark, dataset_path, pagerank_output, iterations=100)
-        # compute_pagerank2(spark, dataset_path)
+        # compute_pageranks(spark, dataset_path, pagerank_output, iterations=100)
+        compute_pagerank2(spark, dataset_path)
     nodes = get_top_n_ranked_nodes(pagerank_output, 10)
     print(nodes)
     print(sum_all_pageranks(pagerank_output))
@@ -108,24 +109,25 @@ def main():
     #     ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH,
     # )
     # # Experiments
-    # if not os.path.exists(QUERY_DATABASE_PATH):
-    #     generate_query_database(
-    #         spark, ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
-    #     )
+    if not os.path.exists(QUERY_DATABASE_PATH):
+        generate_query_database(
+            spark, ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH, QUERY_DATABASE_PATH
+        )
     # alpha(spark, query_db_path=QUERY_DATABASE_PATH)
-
+    # plot_3d(1968778433)
+    draw_heatmap()
     # spark.read.parquet(ENTIRE_DATABASE_TFIDF_VECTORS_OUTPUT_PATH).show(5)
     # spark.read.parquet(ENTIRE_DATABASE_PAGERANK_WITH_TITLES_OUTPUT_PATH).show(5)
-    query_performance(
-        spark,
-        QUERY_DATABASE_PATH,
-        ENTIRE_DATABASE_TFIDF_VECTORS_OUTPUT_PATH,
-        ENTIRE_DATABASE_TFIDF_PIPELINE_OUTPUT_PATH,
-        ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH,
-        ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_TIMES,
-        ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_STATS,
-        ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_PLOT,
-    )
+    # query_performance(
+    #     spark,
+    #     QUERY_DATABASE_PATH,
+    #     ENTIRE_DATABASE_TFIDF_VECTORS_OUTPUT_PATH,
+    #     ENTIRE_DATABASE_TFIDF_PIPELINE_OUTPUT_PATH,
+    #     ENTIRE_DATABASE_PAGERANK_OUTPUT_PATH,
+    #     ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_TIMES,
+    #     ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_STATS,
+    #     ENTIRE_DATABASE_EXPERIMENTS_QUERY_PERFORMANCE_PLOT,
+    # )
 
     spark.stop()
 

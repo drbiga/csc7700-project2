@@ -95,10 +95,13 @@ def alpha(
     3.3 Store the difference indexed by query and pairs of alphas
     4. Plot (scatter, line, whatever) the alphas vs the differences for each query - maybe one plot for each query or even one plot with several hues
     """
+    from pyspark.sql.functions import lit
 
-    # 2) Build UDF for combined scoring
+    # Ensure output directories exist
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
-    # 3) Load and sample queries
+    # Load and sample queries
     queries = (
         spark.read.parquet(query_db_path)
         .select("id", "query")
@@ -108,48 +111,84 @@ def alpha(
     )
     queries = [(r["id"], r["query"]) for r in queries]
 
-    # 8) Compute pairwise differences per query
+    # Pre-load data
+    model = PipelineModel.load(pipeline_model_path)
+    df_tfidf = spark.read.parquet(tfidf_path)
+    df_pr = spark.read.parquet(pagerank_path).select("id", F.col("rank").alias("pr_score"))
+
     rows = []
+    for qid, query in queries:
+        # Compute query vector once
+        query_df = spark.createDataFrame([(query,)], ["title"])
+        q_vec = model.transform(query_df).select("tfidfFeatures").first()["tfidfFeatures"]
+        q_norm = float(q_vec.norm(2))
 
-    # 2) for each query, drive all α locally
-    for qid, text in queries:
-        # compute top-N at each α
-        score_dicts = {}
+        # Broadcast vector and norm
+        sc = spark.sparkContext
+        q_vec_b = sc.broadcast(q_vec)
+        q_norm_b = sc.broadcast(q_norm)
+
+        # Define UDF without embedding large closure
+        def cosine_sim(v):
+            qb = q_vec_b.value
+            dot = float(v.dot(qb))
+            denom = float(v.norm(2)) * q_norm_b.value
+            return dot / denom if denom != 0.0 else 0.0
+        cosine_udf = udf(cosine_sim, DoubleType())
+
+        # Compute TF-IDF similarity once
+        df_scores = (
+            df_tfidf.withColumn("tfidf_score", cosine_udf(col("tfidfFeatures")))
+            .join(df_pr, on="id", how="left")
+            .na.fill({"pr_score": 0.0})
+        )
+
+        # Sweep alpha values
         for a in alpha_values:
-            df_scores = compute_score(
-                spark, query=text, top_n=result_size, alpha=a, beta=1.0 - a
+            combined = df_scores.withColumn("score", lit(a) * col("tfidf_score") + lit(1.0 - a) * col("pr_score"))
+            topn = (
+                combined.select("id", "score")
+                .orderBy(col("score").desc())
+                .limit(result_size)
+                .toPandas()
             )
-            # build {id → score} lookup
-            score_dicts[a] = dict(zip(df_scores["id"], df_scores["score"]))
+            score_dict = dict(zip(topn['id'], topn['score']))
 
-        # pairwise differences
+            # Compare against other α later via pairwise diffs
+            # Store temporarily
+            rows.extend([
+                {'query_id': qid, 'alpha': a, 'scores': score_dict}
+            ])
+
+    # Now compute pairwise differences
+    diff_rows = []
+    # Organize by query
+    from collections import defaultdict
+    by_query = defaultdict(dict)
+    for rec in rows:
+        by_query[rec['query_id']][rec['alpha']] = rec['scores']
+
+    for qid, scores_map in by_query.items():
         for a1, a2 in itertools.combinations(alpha_values, 2):
-            diff = difference_between_result_sets(
-                score_dicts[a1], score_dicts[a2], a1, a2
-            )
-            rows.append(
-                {"query_id": qid, "alpha1": a1, "alpha2": a2, "difference": diff}
-            )
+            diff = difference_between_result_sets(scores_map[a1], scores_map[a2], a1, a2)
+            diff_rows.append({'query_id': qid, 'alpha1': a1, 'alpha2': a2, 'difference': diff})
 
-    # 9) Save results and generate plots
-    out_df = pd.DataFrame(rows)
+    # Save CSV
+    out_df = pd.DataFrame(diff_rows)
     out_df.to_csv(output_csv, index=False)
 
-    # 4) per-query scatter
-    for qid in out_df["query_id"].unique():
-        sub = out_df[out_df["query_id"] == qid]
+    # Generate scatter plots per query
+    for qid in out_df['query_id'].unique():
+        sub = out_df[out_df['query_id'] == qid]
         plt.figure()
-        plt.scatter(
-            sub["alpha1"],
-            sub["alpha2"],
-            s=sub["difference"] * 100,  # scale for visibility
-        )
+        plt.scatter(sub['alpha1'], sub['alpha2'], s=sub['difference'] * 100)
         plt.title(f"Alpha sweep diffs for query {qid}")
         plt.xlabel("α₁")
         plt.ylabel("α₂")
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f"alpha_sweep_{qid}.png"))
         plt.close()
+
 
 
 def query_performance(
@@ -213,6 +252,7 @@ def query_performance(
         elapsed_time_seconds = (ts_end - ts_start).total_seconds()
         query_times_seconds_list.append(elapsed_time_seconds)
     df = pd.DataFrame({"time": query_times_seconds_list})
+    os.makedirs(os.path.dirname(times_output_path), exist_ok=True)
     df.to_csv(times_output_path)
     df.agg(["mean", "median", "std"]).to_csv(stats_output_path)
     fig, ax = plt.subplots(1, 1)
