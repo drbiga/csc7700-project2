@@ -4,6 +4,12 @@ This project aims to create a web-scale search engine for papers using PageRank 
 
 ## Running This
 
+There are two environments that you will need to set up. The first one can be set up by following the instructions in [startenv.sh](./startenv.sh). We used Docker Desktop for Windows to deploy an elasticsearch server and a kibana server to serve as frontend.
+
+The second environment is the python virtual environment, which can be set up by following the instructions below
+
+### Python environment
+
 1. Run this in a Linux VM/WSL (failure to do so may require installation of Hadoop)
 2. Install python/python3
 3. Run `cd csc7700-project2`
