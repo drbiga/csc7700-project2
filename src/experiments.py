@@ -8,16 +8,19 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import pandas as pd
+import numpy as np
 
-from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import SparkSession, functions as F, Window
 from pyspark.ml import Pipeline, PipelineModel
 from pyspark.sql.functions import udf, col
 from pyspark.sql.types import DoubleType
 
+from search_engine import SearchEngine
 from evaluation import difference_between_result_sets
-from util import parse_text_for_matching
 from tfidf_computation import compute_score
 from scoring import compute_score as score_matheus
+
+from util import parse_text_for_matching, filter_word_based, count_common_words
 
 
 def generate_query_database(
@@ -62,17 +65,13 @@ def generate_query_database(
 
 
 def alpha(
-    spark: SparkSession,
+    search_engine: SearchEngine,
     query_db_path: str,
-    tfidf_path: str = "spark/tfidf",
-    pagerank_path: str = "entire-database-spark-pageranks",
-    pipeline_model_path: str = "spark/pipeline_model",
-    result_size: int = 100,
-    alpha_values: list = [i / 10.0 for i in range(11)],
-    sample_frac: float = 0.1,
-    sample_limit: int = 100,
-    output_csv: str = "entire-database-spark-experiments/alpha_results.csv",
-    output_dir: str = "entire-database-spark-experiments/alpha_plots",
+    result_size: int,
+    values_path: str = "entire-database-spark-experiments/alpha/results.csv",
+    stats_general_path: str = "entire-database-spark-experiments/alpha/stats/general.csv",
+    stats_per_query_path: str = "entire-database-spark-experiments/alpha/stats/query.csv",
+    plots_path: str = "entire-database-spark-experiments/alpha/plots",
 ) -> None:
     """Performs the evaluation of various different scenarios for alpha, which
     is the weight given to TFIDF relative to the final score. Alpha values are
@@ -95,32 +94,28 @@ def alpha(
     3.3 Store the difference indexed by query and pairs of alphas
     4. Plot (scatter, line, whatever) the alphas vs the differences for each query - maybe one plot for each query or even one plot with several hues
     """
+    df_queries = pd.read_parquet(query_db_path)
+    query_count = df_queries.count()
+    print("Query count:", query_count)
 
-    # 2) Build UDF for combined scoring
-
-    # 3) Load and sample queries
-    queries = (
-        spark.read.parquet(query_db_path)
-        .select("id", "query")
-        .sample(False, sample_frac, seed=42)
-        .limit(sample_limit)
-        .collect()
-    )
-    queries = [(r["id"], r["query"]) for r in queries]
-
-    # 8) Compute pairwise differences per query
+    # alpha_values = np.linspace(0, 1, 100)
+    alpha_values = np.geomspace(1e-6, 1, 100)
     rows = []
-
+    counter = 0
     # 2) for each query, drive all α locally
-    for qid, text in queries:
+    for _, row in df_queries.iterrows():
         # compute top-N at each α
+        counter += 1
+        print("Iteration", counter)
         score_dicts = {}
         for a in alpha_values:
-            df_scores = compute_score(
-                spark, query=text, top_n=result_size, alpha=a, beta=1.0 - a
+            scores = search_engine.get_doc_scores_for_query(
+                row["query"], alpha=a, result_size=result_size
             )
             # build {id → score} lookup
-            score_dicts[a] = dict(zip(df_scores["id"], df_scores["score"]))
+            score_dicts[a] = {
+                score["_source"]["id"]: score["_score"] for score in scores
+            }
 
         # pairwise differences
         for a1, a2 in itertools.combinations(alpha_values, 2):
@@ -128,12 +123,37 @@ def alpha(
                 score_dicts[a1], score_dicts[a2], a1, a2
             )
             rows.append(
-                {"query_id": qid, "alpha1": a1, "alpha2": a2, "difference": diff}
+                {"query_id": row["id"], "alpha1": a1, "alpha2": a2, "difference": diff}
             )
 
-    # 9) Save results and generate plots
     out_df = pd.DataFrame(rows)
-    out_df.to_csv(output_csv, index=False)
+    out_df.to_csv(values_path, index=False)
+
+    agg_functions = ["mean", "median", "std"]
+    out_df.agg(
+        {
+            "difference": agg_functions,
+        }
+    ).to_csv(stats_general_path, index=False)
+    df = out_df.groupby("query_id").agg({"difference": agg_functions}).reset_index()
+    df.columns = df.columns.map("_".join)
+    df.to_csv(stats_per_query_path, index=False)
+
+    out_df["alpha1"] = np.log(out_df["alpha1"].apply(lambda a: round(a, 2)))
+    out_df["alpha2"] = np.log(out_df["alpha2"].apply(lambda a: round(a, 2)))
+    # Pivot the DataFrame
+    heatmap_data = out_df.drop("query_id", axis=1).pivot_table(
+        index="alpha1", columns="alpha2", values="difference", aggfunc="mean"
+    )
+
+    # Create the heatmap
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(heatmap_data, cmap="viridis")
+    plt.title("Heatmap of y by x1 and x2")
+    plt.xlabel("α₁")
+    plt.ylabel("α₂")
+    plt.savefig(f"{plots_path}/heatmap.png")
+    plt.close()
 
     # 4) per-query scatter
     for qid in out_df["query_id"].unique():
@@ -148,16 +168,13 @@ def alpha(
         plt.xlabel("α₁")
         plt.ylabel("α₂")
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"alpha_sweep_{qid}.png"))
+        plt.savefig(os.path.join(plots_path, f"alpha_sweep_{qid}.png"))
         plt.close()
 
 
 def query_performance(
-    spark: SparkSession,
+    search_engine: SearchEngine,
     query_db_path: str,
-    tfidf_path: str,
-    pipeline_model_path: str,
-    pagerank_path: str,
     times_output_path: str,
     stats_output_path: str,
     plot_output_path: str,
@@ -177,44 +194,29 @@ def query_performance(
     3. Compute average, median, and standard deviation of scoring time
     4. Plot histogram of scoring time
     """
-    df_queries = spark.read.parquet(query_db_path)
+    # df_queries = spark.read.parquet(query_db_path)
+    df_queries = pd.read_parquet(query_db_path)
     query_count = df_queries.count()
     print("Query count:", query_count)
-    query_times_seconds_list = []
-    model = PipelineModel.load(pipeline_model_path)
-    df_tfidf_vectors = spark.read.parquet(tfidf_path)
-    df_pageranks = spark.read.parquet(pagerank_path)
     counter = 0
-    for query in df_queries.select("query").toLocalIterator():
+    ids_list = []
+    query_list = []
+    query_times_seconds_list = []
+    for _, row in df_queries[["id", "query"]].iterrows():
         counter += 1
-        if counter > min(5 / 0.5, query_count):
-            break
         print("Running query", counter)
         ts_start = datetime.now()
-
-        conditions = [F.col("title").contains(word) for word in query["query"].split()]
-        # Combine them
-        combined_condition = conditions[0]
-        for cond in conditions[1:]:
-            combined_condition = combined_condition | cond
-
-        # Filter
-        df_tfidf_vectors_filtered = df_tfidf_vectors.filter(combined_condition)
-        score_matheus(
-            spark,
-            query["query"],
-            df_tfidf_vectors_filtered,
-            model,
-            df_pageranks,
-            alpha=0.5,  # the values for alpha and beta do not matter too much here,
-            beta=0.5,  # as we are just collecting execution time data
-        )
+        search_engine.get_doc_scores_for_query(row["query"], 0.5)
         ts_end = datetime.now()
         elapsed_time_seconds = (ts_end - ts_start).total_seconds()
+        ids_list.append(row["id"])
+        query_list.append(row["query"])
         query_times_seconds_list.append(elapsed_time_seconds)
-    df = pd.DataFrame({"time": query_times_seconds_list})
-    df.to_csv(times_output_path)
-    df.agg(["mean", "median", "std"]).to_csv(stats_output_path)
+    df = pd.DataFrame(
+        {"id": ids_list, "query": query_list, "time": query_times_seconds_list}
+    )
+    df.to_csv(times_output_path, index=False)
+    df["time"].agg(["mean", "median", "std"]).to_csv(stats_output_path, index=False)
     fig, ax = plt.subplots(1, 1)
     sns.histplot(df, x="time", ax=ax)
     fig.savefig(plot_output_path)
@@ -222,11 +224,11 @@ def query_performance(
 
 
 def average_required_size(
-    spark: SparkSession,
+    search_engine: SearchEngine,
     query_db_path: str,
-    tfidf_vectors_path: str,
-    pipeline_model_path: str,
-    pageranks_path,
+    sizes_output_path: str,
+    stats_output_path: str,
+    plot_output_path: str,
 ) -> None:
     """Performs the evaluation of average required result set size.
 
@@ -243,37 +245,41 @@ def average_required_size(
     3. Compute average, median, and standard deviation of index sizes?
     4. Plot histogram of index sizes?
     """
-    df_queries = spark.read.parquet(query_db_path)
-    query_count = df_queries.count()
-    query_times_seconds_list = []
-    model = PipelineModel.load(pipeline_model_path)
-    df_tfidf_vectors = spark.read.parquet(tfidf_vectors_path)
-    model = PipelineModel.load(pipeline_model_path)
-    df_pageranks = spark.read.parquet(pageranks_path)
+    df_queries = pd.read_parquet(query_db_path)
     counter = 0
-    for query in df_queries.select("query").toLocalIterator():
-        counter += 1
-        if counter > min(5 / 0.5, query_count):
-            break
-        print("Running query", counter)
-        ts_start = datetime.now()
-        score_matheus(
-            spark,
-            query["query"],
-            df_tfidf_vectors,
-            model,
-            df_pageranks,
-            alpha=0.5,  # the values for alpha and beta do not matter too much here,
-            beta=0.5,  # as we are just collecting execution time data
-        )
-        ts_end = datetime.now()
-        elapsed_time_seconds = (ts_end - ts_start).total_seconds()
-        query_times_seconds_list.append(elapsed_time_seconds)
+    alphas_list = []
+    ids_list = []
+    queries_list = []
+    sizes_list = []
+    for alpha in np.linspace(0, 1, 10):
+        for _, row in df_queries[["id", "query"]].iterrows():
+            counter += 1
+            print("Running query", counter)
 
+            rank = search_engine.get_rank(row["id"], row["query"], alpha=0.5)
 
-# =============================================
-# There is something else we could try. Maybe not only doing the "average required size"
-# but also doing something that resembles precision@K. Perhaps setting "good results" to
-# be the titles that contain at least one word from the query. Then, we could look for
-# some common words or something in the database to search for, I'm not sure. There will
-# be some sort of arbitrary decision here.
+            alphas_list.append(alpha)
+            ids_list.append(row["id"])
+            queries_list.append(row["query"])
+            sizes_list.append(rank)
+    df = pd.DataFrame(
+        {
+            "alpha": alphas_list,
+            "id": ids_list,
+            "query": queries_list,
+            "size": sizes_list,
+        }
+    )
+    df.to_csv(sizes_output_path, index=False)
+    df = pd.read_csv(sizes_output_path)
+    df["alpha"] = df["alpha"].apply(lambda a: round(a, 2))
+    df_agg = df.groupby("alpha")[["size"]].agg(["mean", "median", "std"]).reset_index()
+    df_agg.columns = df_agg.columns.map("_".join)
+    df_agg.to_csv(stats_output_path, index=False)
+    fig, ax = plt.subplots(1, 1)
+    sns.boxplot(df, x="alpha", y="size", ax=ax, showfliers=False)
+    plt.xticks(rotation=90)
+    fig.savefig(plot_output_path)
+    plt.close(fig)
+    df["eq1"] = df["size"].apply(lambda s: s == 1)
+    print(df.groupby("eq1").count())

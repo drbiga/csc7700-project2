@@ -30,6 +30,7 @@ def compute_score(
     top_n: int = 10,
     alpha: float = 1.0,
     beta: float = 0.0,
+    return_sparkdf: bool = False,
 ) -> pd.DataFrame:
     """
     Computes cosine similarity scores between `query` and all documents in the TF-IDF store.
@@ -75,6 +76,10 @@ def compute_score(
         .withColumn("score", alpha * F.col("tfidf_score") + beta * F.col("pr_score"))
     )
 
+    if return_sparkdf:
+        return combined.select(
+            F.col(id_field), F.col(text_field), F.col("score")
+        ).orderBy(F.col("score").desc())
     # Select and order
     out = (
         combined.select(F.col(id_field), F.col(text_field), F.col("score"))

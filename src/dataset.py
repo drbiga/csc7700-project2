@@ -4,9 +4,25 @@ import random
 import json
 import ijson
 
+
+# ----------------------------------------------------------------------------------------------
+# Shared
+import pandas as pd
+
+# ----------------------------------------------------------------------------------------------
+# Data processing
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType
 from pyspark.sql.functions import explode, col, desc
+
+# ----------------------------------------------------------------------------------------------
+# Data vis
+import networkx as nx
+import matplotlib.pyplot as plt
+import os
+import random
+
+# ----------------------------------------------------------------------------------------------
 
 from util import convert_decimals
 
@@ -174,6 +190,78 @@ def count_nodes_by_in_degree(input_json_path: str) -> List[Tuple[int, int]]:
     spark.stop()
 
     return result
+
+
+# ==============================================================================================
+# Data vis
+
+
+def plot_sampled_citation_graph(input_path: str, num_edges: int, output_path: str):
+    """
+    Reads citation data from Parquet files, samples a subset of edges, and plots a citation network.
+
+    Parameters:
+        input_path (str): Path to the directory containing Parquet files.
+        num_edges (int): Number of edges to sample for visualization.
+    """
+    # Read all Parquet files into a single DataFrame
+    df = pd.read_json(input_path)
+    print(df.head())
+
+    # Validate necessary columns
+    if not {"id", "title", "references"}.issubset(df.columns):
+        raise ValueError("Expected columns: 'id', 'title', 'references'")
+
+    # Drop rows with missing references
+    df = df.dropna(subset=["references"])
+
+    # Ensure references are lists
+    df["references"] = df["references"].apply(
+        lambda x: x if isinstance(x, list) else []
+    )
+
+    # Build a dictionary for fast ID -> title lookup
+    id_to_title = dict(zip(df["id"], df["title"]))
+
+    # Create edge list: (source_id, reference_id)
+    edges = []
+    for _, row in df.iterrows():
+        src_id = row["id"]
+        for ref_id in row["references"]:
+            edges.append((src_id, ref_id))
+
+    # Sample edges
+    sampled_edges = random.sample(edges, min(num_edges, len(edges)))
+
+    # Build graph with sampled edges
+    G = nx.DiGraph()
+    for src, dst in sampled_edges:
+        if src in id_to_title and dst in id_to_title:
+            G.add_edge(src, dst)
+
+    # Prepare labels (title truncated to 50 chars)
+    n_chars = 20
+    labels = {
+        node: (
+            id_to_title[node][:n_chars] + "..."
+            if len(id_to_title[node]) > n_chars
+            else id_to_title[node]
+        )
+        for node in G.nodes
+    }
+
+    # Plot
+    fig = plt.figure(figsize=(12, 8))
+    pos = nx.planar_layout(G)
+    nx.draw_networkx_edges(G, pos, alpha=0.8, arrows=True)
+    nx.draw_networkx_nodes(G, pos, node_size=300, node_color="skyblue")
+    nx.draw_networkx_labels(G, pos, labels, font_size=8)
+
+    plt.title(f"Sampled Citation Graph ({len(sampled_edges)} edges)")
+    plt.axis("off")
+    plt.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
 
 
 def main():

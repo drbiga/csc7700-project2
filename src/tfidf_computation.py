@@ -13,7 +13,7 @@ from pyspark.sql.types import DoubleType
 
 def get_spark() -> SparkSession:
     return (
-        SparkSession.builder.appName("ComputePageRanks")
+        SparkSession.builder.appName("App")
         .config("spark.driver.memory", "8g")
         .config("spark.executor.memory", "8g")
         .config("spark.sql.autoBroadcastJoinThreshold", -1)

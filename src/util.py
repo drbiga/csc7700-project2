@@ -55,3 +55,45 @@ def parse_text_for_matching(
     if not keep_array:
         df = df.withColumn(out_column_name, F.array_join(F.col(out_column_name), " "))
     return df.drop("filtered", "tokens")
+
+
+def filter_word_based(
+    df: DataFrame, text_column_name: str, text_filter: str
+) -> DataFrame:
+
+    conditions = [
+        F.col(text_column_name).contains(word) for word in text_filter.split()
+    ]
+    # Combine them
+    combined_condition = conditions[0]
+    for cond in conditions[1:]:
+        combined_condition = combined_condition | cond
+
+    # Filter
+    df_filtered = df.filter(combined_condition)
+    return df_filtered
+
+
+def count_common_words(
+    df: DataFrame,
+    text_column_name: str,
+    text_to_match: str,
+    word_count_column_name: str,
+) -> DataFrame:
+    words_to_match = text_to_match.lower().split()
+
+    # Broadcast the query words to all workers
+    words_broadcast = F.array(*[F.lit(word) for word in words_to_match])
+
+    # Step 1: Tokenize the text column (simple split by space)
+    df = df.withColumn("text_words", F.split(F.lower(F.col(text_column_name)), r"\s+"))
+
+    # Step 2: Find intersection between text_words and query_words
+    df = df.withColumn(
+        "common_words", F.array_intersect(F.col("text_words"), words_broadcast)
+    )
+
+    # Step 3: Count common words
+    df = df.withColumn(word_count_column_name, F.size(F.col("common_words")))
+
+    return df.drop("text_words", "common_words")
